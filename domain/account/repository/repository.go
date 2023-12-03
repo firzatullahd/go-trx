@@ -14,7 +14,7 @@ import (
 
 type Repository interface {
 	AccountBalance(ctx context.Context, userID uint64) (*model.Account, error)
-	UpdateBalance(ctx context.Context, accountID uint64, balance float64) error
+	UpdateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64, balance float64) error
 }
 
 type repository struct {
@@ -50,7 +50,7 @@ func (r *repository) AccountBalance(ctx context.Context, userID uint64) (*model.
 	return &result, nil
 }
 
-func (r *repository) UpdateBalance(ctx context.Context, accountID uint64, balance float64) error {
+func (r *repository) UpdateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64, balance float64) error {
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 	query, args, err := sq.Update(`account`).
 		Set(`updated_at`, time.Now()).
@@ -62,7 +62,7 @@ func (r *repository) UpdateBalance(ctx context.Context, accountID uint64, balanc
 		return err
 	}
 
-	_, err = r.masterPSQL.ExecContext(ctx, query, args...)
+	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return err

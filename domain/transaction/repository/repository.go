@@ -12,8 +12,9 @@ import (
 )
 
 type Repository interface {
-	InsertTransaction(ctx context.Context, payload model.AccountTransaction) error
-	CalculateBalance(ctx context.Context, accountID uint64) (float64, error)
+	WithTransaction() (*sqlx.Tx, error)
+	InsertTransaction(ctx context.Context, tx *sqlx.Tx, payload model.AccountTransaction) error
+	CalculateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64) (float64, error)
 }
 
 type repository struct {
@@ -28,14 +29,15 @@ func NewRepository(masterPSQL *sqlx.DB, slavePSQL *sqlx.DB) Repository {
 	}
 }
 
-func (r *repository) InsertTransaction(ctx context.Context, payload model.AccountTransaction) error {
+func (r *repository) InsertTransaction(ctx context.Context, tx *sqlx.Tx, payload model.AccountTransaction) error {
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 	query, args, err := sq.Insert(`account_transaction`).Columns(`account_id`, `transaction_type`, `remark`, `amount`).Values(payload.AccountID, payload.TransactionType, payload.Remark, payload.Amount).ToSql()
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return err
 	}
-	_, err = r.masterPSQL.ExecContext(ctx, query, args...)
+
+	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return err
@@ -44,7 +46,7 @@ func (r *repository) InsertTransaction(ctx context.Context, payload model.Accoun
 	return nil
 }
 
-func (r *repository) CalculateBalance(ctx context.Context, accountID uint64) (float64, error) {
+func (r *repository) CalculateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64) (float64, error) {
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 	query, args, err := sq.Select(`COALESCE(SUM(amount), 0)`).From(`account_transaction`).Where(squirrel.Eq{`account_id`: accountID}).ToSql()
 	if err != nil {
@@ -52,7 +54,7 @@ func (r *repository) CalculateBalance(ctx context.Context, accountID uint64) (fl
 		return 0, err
 	}
 	var balance float64
-	err = r.slavePSQL.QueryRowxContext(ctx, query, args...).Scan(&balance)
+	err = tx.QueryRowxContext(ctx, query, args...).Scan(&balance)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
@@ -62,4 +64,13 @@ func (r *repository) CalculateBalance(ctx context.Context, accountID uint64) (fl
 	}
 
 	return balance, nil
+}
+
+func (r *repository) WithTransaction() (*sqlx.Tx, error) {
+	tx, err := r.masterPSQL.Beginx()
+	if err != nil {
+		return nil, err
+	}
+
+	return tx, nil
 }

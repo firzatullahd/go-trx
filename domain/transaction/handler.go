@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	tError "go-trx/domain/transaction/error"
 	"go-trx/domain/transaction/model"
 	"go-trx/domain/transaction/service"
 	"go-trx/logger"
@@ -31,7 +32,8 @@ func (h *Handler) InsertTransaction(c echo.Context) error {
 	err := h.service.InsertTransaction(c.Request().Context(), payload)
 	if err != nil {
 		logger.Error(c.Request().Context(), err.Error())
-		return c.JSON(http.StatusBadRequest, response.SetResponse(http.StatusBadRequest, err.Error(), nil))
+		errCode, errMsg := tError.ParseError(err)
+		return c.JSON(errCode, response.SetResponse(errCode, errMsg, nil))
 	}
 	return c.JSON(http.StatusCreated, response.SetResponse(http.StatusCreated, "success", nil))
 
