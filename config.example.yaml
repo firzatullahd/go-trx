@@ -26,4 +26,7 @@ database:
 redis:
   db: 1
   host: localhost
-  password:
+  password: 
+  port: 
+constant: 
+  trxTtl: 24

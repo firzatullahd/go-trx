@@ -11,6 +11,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+//go:generate mockgen -source=psql_repository.go -destination=./mock/psql_repository.go -package=repository
 type Repository interface {
 	WithTransaction() (*sqlx.Tx, error)
 	InsertTransaction(ctx context.Context, tx *sqlx.Tx, payload model.AccountTransaction) error

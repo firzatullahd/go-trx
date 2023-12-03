@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"go-trx/config"
 	aRepository "go-trx/domain/account/repository"
@@ -11,8 +13,6 @@ import (
 	"go-trx/logger"
 	"strings"
 	"time"
-
-	"github.com/go-redis/redis/v8"
 )
 
 type Service interface {
@@ -23,28 +23,28 @@ type service struct {
 	conf        config.Config
 	repo        repository.Repository
 	accountRepo aRepository.Repository
-	redisClient *redis.Client
+	redisRepo   repository.RedisRepository
 }
 
-func NewService(conf config.Config, repo repository.Repository, accountRepo aRepository.Repository, redisClient *redis.Client) Service {
+func NewService(conf config.Config, repo repository.Repository, accountRepo aRepository.Repository, redisRepo repository.RedisRepository) Service {
 	return &service{
 		conf:        conf,
 		repo:        repo,
 		accountRepo: accountRepo,
-		redisClient: redisClient,
+		redisRepo:   redisRepo,
 	}
 }
 
 func (s *service) InsertTransaction(ctx context.Context, payload model.NewTransaction) error {
 
-	account, err := s.accountRepo.AccountBalance(ctx, payload.UserID)
-	if err != nil {
-		logger.Error(ctx, err.Error())
-		return err
+	account, errAccount := s.accountRepo.AccountBalance(ctx, payload.UserID)
+	if errAccount != nil && !errors.Is(errAccount, sql.ErrNoRows) {
+		logger.Error(ctx, errAccount.Error())
+		return errAccount
 	}
 
 	key := fmt.Sprintf("lock_%s", payload.ReferenceKey)
-	ok, err := s.redisClient.SetNX(ctx, key, "1", time.Duration(s.conf.Constant.TrxTTL)*time.Hour).Result()
+	ok, err := s.redisRepo.SetNX(ctx, key, "1", time.Duration(s.conf.Constant.TrxTTL)*time.Hour)
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return err
@@ -53,16 +53,26 @@ func (s *service) InsertTransaction(ctx context.Context, payload model.NewTransa
 		return tError.ErrDuplicateTrx
 	}
 
-	logger.Info(ctx, "account %d with balance %v insert transaction %s with amount %v | %v", account.ID, account.Balance, payload.TransactionType, payload.Amount, payload.Amount.Abs())
-
-	if strings.EqualFold(payload.TransactionType, model.TransactionCredit) && payload.Amount.Abs().GreaterThan(account.Balance) {
-		return tError.ErrBalanceInsufficient
-	}
-
 	tx, err := s.repo.WithTransaction()
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return err
+	}
+
+	if errors.Is(errAccount, sql.ErrNoRows) {
+		logger.Info(ctx, "insert new account with userID %d", payload.UserID)
+		account, err = s.accountRepo.InsertAccount(ctx, tx, payload.UserID)
+		if err != nil {
+			logger.Error(ctx, err.Error())
+			return err
+		}
+	}
+
+	logger.Info(ctx, "accountID %d with balance %v insert transaction %s with amount %v", account.ID, account.Balance, payload.TransactionType, payload.Amount)
+
+	if strings.EqualFold(payload.TransactionType, model.TransactionCredit) && payload.Amount.Abs().GreaterThan(account.Balance) {
+		tx.Rollback()
+		return tError.ErrBalanceInsufficient
 	}
 
 	err = s.repo.InsertTransaction(ctx, tx, model.AccountTransaction{

@@ -37,7 +37,8 @@ func Start(conf config.Config) {
 	aHandler := a.NewHandler(aSvc)
 
 	tRepo := tRepository.NewRepository(masterPSQL, slavePSQL)
-	tSvc := tService.NewService(conf, tRepo, aRepo, redisClient)
+	tRedisRepo := tRepository.NewRedisRepository(redisClient)
+	tSvc := tService.NewService(conf, tRepo, aRepo, tRedisRepo)
 	tHandler := t.NewHandler(tSvc)
 
 	e := echo.New()

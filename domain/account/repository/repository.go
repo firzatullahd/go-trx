@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"go-trx/domain/account/model"
 	"go-trx/logger"
 	"time"
@@ -12,9 +10,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+//go:generate mockgen -source=repository.go -destination=./mock/repository.go -package=repository
 type Repository interface {
-	AccountBalance(ctx context.Context, userID uint64) (*model.Account, error)
+	AccountBalance(ctx context.Context, userID uint64) (model.Account, error)
 	UpdateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64, balance float64) error
+	InsertAccount(ctx context.Context, tx *sqlx.Tx, userID uint64) (model.Account, error)
 }
 
 type repository struct {
@@ -29,25 +29,22 @@ func NewRepository(masterPSQL *sqlx.DB, slavePSQL *sqlx.DB) Repository {
 	}
 }
 
-func (r *repository) AccountBalance(ctx context.Context, userID uint64) (*model.Account, error) {
+func (r *repository) AccountBalance(ctx context.Context, userID uint64) (model.Account, error) {
 	var result model.Account
 
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 	query, args, err := sq.Select(`id, user_id, balance, created_at, updated_at, deleted_at`).From(`account`).Where(`deleted_at isnull`).Where(squirrel.Eq{`user_id`: userID}).ToSql()
 	if err != nil {
 		logger.Error(ctx, err.Error())
-		return nil, err
+		return result, err
 	}
 	err = r.slavePSQL.QueryRowxContext(ctx, query, args...).StructScan(&result)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		logger.Error(ctx, err.Error())
-		return nil, err
+		return result, err
 	}
 
-	return &result, nil
+	return result, nil
 }
 
 func (r *repository) UpdateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64, balance float64) error {
@@ -69,4 +66,24 @@ func (r *repository) UpdateBalance(ctx context.Context, tx *sqlx.Tx, accountID u
 	}
 
 	return nil
+}
+
+func (r *repository) InsertAccount(ctx context.Context, tx *sqlx.Tx, userID uint64) (model.Account, error) {
+	var result model.Account
+
+	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	query, args, err := sq.Insert(`account`).Columns(`user_id`, `balance`).Values(userID, 0).Suffix(`returning id, user_id, balance, created_at, updated_at, deleted_at`).ToSql()
+	if err != nil {
+		logger.Error(ctx, err.Error())
+		return result, err
+	}
+
+	err = tx.QueryRowxContext(ctx, query, args...).StructScan(&result)
+	if err != nil {
+		logger.Error(ctx, err.Error())
+		return result, err
+	}
+
+	return result, nil
+
 }

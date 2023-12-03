@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"go-trx/config"
 	"go-trx/domain/account/model"
@@ -28,11 +29,12 @@ func NewService(conf config.Config, repo repository.Repository) Service {
 func (s *service) AccountBalance(ctx context.Context, userID uint64) (*model.Account, error) {
 	account, err := s.repo.AccountBalance(ctx, userID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("account not found")
+		}
 		logger.Error(ctx, err.Error())
 		return nil, err
 	}
-	if account == nil {
-		return nil, errors.New("account not found")
-	}
-	return account, nil
+
+	return &account, nil
 }
