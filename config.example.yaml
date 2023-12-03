@@ -1,0 +1,29 @@
+app:
+  env: local
+  host: 0.0.0.0
+  name: go-trx
+  port: '8050'
+database:
+  master:
+    dbName: postgres
+    host: localhost
+    password:
+    port: 5432
+    schema: public
+    user:
+  setConMaxIdleTime: 30
+  setConMaxLifeTime: 60
+  setMaxIdleCons: 20
+  setMaxOpenCons: 20
+  slave:
+    dbName: postgres
+    debug: true
+    host: localhost
+    password:
+    port: 5432
+    schema: public
+    user:
+redis:
+  db: 1
+  host: localhost
+  password:
