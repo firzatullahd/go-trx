@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"go-trx/config"
 	"go-trx/logger"
 	"go-trx/server"
@@ -14,8 +13,6 @@ func main() {
 	flag.Parse()
 
 	conf := config.Load(configName)
-
-	fmt.Printf("%+v", conf)
 
 	logger.Init(conf)
 	server.Start(conf)

@@ -3,16 +3,23 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/labstack/echo/v4"
 	"go-trx/config"
 	"go-trx/db"
+	a "go-trx/domain/account"
+	aRepository "go-trx/domain/account/repository"
+	aService "go-trx/domain/account/service"
 	hc "go-trx/domain/health_check"
 	hcRepository "go-trx/domain/health_check/repository"
 	hcService "go-trx/domain/health_check/service"
+	t "go-trx/domain/transaction"
+	tRepository "go-trx/domain/transaction/repository"
+	tService "go-trx/domain/transaction/service"
 	"go-trx/logger"
 	"log"
 	"os"
 	"os/signal"
+
+	"github.com/labstack/echo/v4"
 )
 
 func Start(conf config.Config) {
@@ -21,16 +28,20 @@ func Start(conf config.Config) {
 	masterPSQL, slavePSQL := db.InitializePSQL(conf.Postgres)
 	redisClient := db.InitializeRedisClient(conf.Redis)
 
-	fmt.Println(masterPSQL, slavePSQL, redisClient)
-
 	hcRepo := hcRepository.NewRepository(masterPSQL, slavePSQL)
 	hcSvc := hcService.NewService(conf, hcRepo)
-	hcHandler := hc.NewHealthCheckHandler(hcSvc)
+	hcHandler := hc.NewHandler(hcSvc)
+
+	aRepo := aRepository.NewRepository(masterPSQL, slavePSQL)
+	aSvc := aService.NewService(conf, aRepo)
+	aHandler := a.NewHandler(aSvc)
+
+	tRepo := tRepository.NewRepository(masterPSQL, slavePSQL)
+	tSvc := tService.NewService(conf, tRepo, aRepo, redisClient)
+	tHandler := t.NewHandler(tSvc)
 
 	e := echo.New()
-	//todo: middleware
-	//todo: setup router
-	e = InitializeRouter(e, hcHandler)
+	e = InitializeRouter(e, hcHandler, aHandler, tHandler)
 	idleConnsClosed := make(chan struct{})
 	go func() {
 		sigint := make(chan os.Signal, 1)

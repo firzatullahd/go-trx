@@ -4,6 +4,7 @@ type Config struct {
 	App      Application `mapstructure:"app"`
 	Postgres Postgres    `mapstructure:"database"`
 	Redis    Redis       `mapstructure:"redis"`
+	Constant Constant    `mapstructure:"constant"`
 }
 
 type Application struct {
@@ -34,6 +35,11 @@ type PSQL struct {
 
 type Redis struct {
 	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
+}
+
+type Constant struct {
+	TrxTTL int `mapstructure:"trxTtl"`
 }

@@ -2,10 +2,10 @@ package config
 
 import (
 	"fmt"
+	"strconv"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	_ "github.com/spf13/viper"
-	"strconv"
 )
 
 var searchPath = []string{
