@@ -13,6 +13,8 @@ import (
 	"go-trx/logger"
 	"strings"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -53,54 +55,51 @@ func (s *service) InsertTransaction(ctx context.Context, payload model.NewTransa
 		return tError.ErrDuplicateTrx
 	}
 
-	tx, err := s.repo.WithTransaction()
-	if err != nil {
-		logger.Error(ctx, err.Error())
-		return err
-	}
-
-	if errors.Is(errAccount, sql.ErrNoRows) {
-		logger.Info(ctx, "insert new account with userID %d", payload.UserID)
-		account, err = s.accountRepo.InsertAccount(ctx, tx, payload.UserID)
-		if err != nil {
-			logger.Error(ctx, err.Error())
-			return err
-		}
-	}
-
 	logger.Info(ctx, "accountID %d with balance %v insert transaction %s with amount %v", account.ID, account.Balance, payload.TransactionType, payload.Amount)
 
 	if strings.EqualFold(payload.TransactionType, model.TransactionCredit) && payload.Amount.Abs().GreaterThan(account.Balance) {
-		tx.Rollback()
 		return tError.ErrBalanceInsufficient
 	}
 
-	err = s.repo.InsertTransaction(ctx, tx, model.AccountTransaction{
-		AccountID:       account.ID,
-		TransactionType: payload.TransactionType,
-		Remark:          payload.Remark,
-		Amount:          payload.Amount,
-	})
-	if err != nil {
-		tx.Rollback()
+	if err := s.repo.WithTransaction(ctx, func(tx *sqlx.Tx) error {
+
+		if errors.Is(errAccount, sql.ErrNoRows) {
+			logger.Info(ctx, "insert new account with userID %d", payload.UserID)
+			account, err = s.accountRepo.InsertAccount(ctx, tx, payload.UserID)
+			if err != nil {
+				logger.Error(ctx, err.Error())
+				return err
+			}
+		}
+
+		if err := s.repo.InsertTransaction(ctx, tx, model.AccountTransaction{
+			AccountID:       account.ID,
+			TransactionType: payload.TransactionType,
+			Remark:          payload.Remark,
+			Amount:          payload.Amount,
+		}); err != nil {
+			logger.Error(ctx, err.Error())
+			return err
+		}
+
+		currentBalance, err := s.repo.CalculateBalance(ctx, tx, account.ID)
+		if err != nil {
+			tx.Rollback()
+			logger.Error(ctx, err.Error())
+			return err
+		}
+
+		if err := s.accountRepo.UpdateBalance(ctx, tx, account.ID, currentBalance); err != nil {
+			logger.Error(ctx, err.Error())
+			return err
+		}
+
+		return nil
+
+	}); err != nil {
 		logger.Error(ctx, err.Error())
 		return err
 	}
 
-	currentBalance, err := s.repo.CalculateBalance(ctx, tx, account.ID)
-	if err != nil {
-		tx.Rollback()
-		logger.Error(ctx, err.Error())
-		return err
-	}
-
-	err = s.accountRepo.UpdateBalance(ctx, tx, account.ID, currentBalance)
-	if err != nil {
-		tx.Rollback()
-		logger.Error(ctx, err.Error())
-		return err
-	}
-
-	tx.Commit()
 	return nil
 }

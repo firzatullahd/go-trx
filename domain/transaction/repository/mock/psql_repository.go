@@ -70,16 +70,15 @@ func (mr *MockRepositoryMockRecorder) InsertTransaction(ctx, tx, payload any) *g
 }
 
 // WithTransaction mocks base method.
-func (m *MockRepository) WithTransaction() (*sqlx.Tx, error) {
+func (m *MockRepository) WithTransaction(ctx context.Context, block func(*sqlx.Tx) error) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithTransaction")
-	ret0, _ := ret[0].(*sqlx.Tx)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "WithTransaction", ctx, block)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // WithTransaction indicates an expected call of WithTransaction.
-func (mr *MockRepositoryMockRecorder) WithTransaction() *gomock.Call {
+func (mr *MockRepositoryMockRecorder) WithTransaction(ctx, block any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTransaction", reflect.TypeOf((*MockRepository)(nil).WithTransaction))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTransaction", reflect.TypeOf((*MockRepository)(nil).WithTransaction), ctx, block)
 }

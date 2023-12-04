@@ -13,7 +13,7 @@ import (
 
 //go:generate mockgen -source=psql_repository.go -destination=./mock/psql_repository.go -package=repository
 type Repository interface {
-	WithTransaction() (*sqlx.Tx, error)
+	WithTransaction(ctx context.Context, block func(tx *sqlx.Tx) error) error
 	InsertTransaction(ctx context.Context, tx *sqlx.Tx, payload model.AccountTransaction) error
 	CalculateBalance(ctx context.Context, tx *sqlx.Tx, accountID uint64) (float64, error)
 }
@@ -67,11 +67,23 @@ func (r *repository) CalculateBalance(ctx context.Context, tx *sqlx.Tx, accountI
 	return balance, nil
 }
 
-func (r *repository) WithTransaction() (*sqlx.Tx, error) {
-	tx, err := r.masterPSQL.Beginx()
+func (r *repository) WithTransaction(ctx context.Context, block func(tx *sqlx.Tx) error) error {
+	tx, err := r.masterPSQL.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return tx, nil
+	err = block(tx)
+	if err != nil {
+		if e := tx.Rollback(); e != nil {
+			return err
+		}
+		return err
+	}
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
